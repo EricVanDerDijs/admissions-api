@@ -1,0 +1,28 @@
+#!/bin/bash
+
+PORT="3015"
+DETACH="-it"
+TAG="admissions-api"
+
+if [ "$port" != "" ]
+then
+  PORT=$port
+fi
+
+if [ "$detach" == "true" ]
+then
+  echo "Running detached"
+  DETACH="-d"
+fi
+
+if [ "$tag" != "" ]
+then
+  TAG=$tag
+fi
+
+echo "Mapped to port: $PORT"
+
+docker run \
+  $DETACH \
+  -p $PORT:80 \
+  --mount source=$TAG-volume,destination=/app/storage $TAG

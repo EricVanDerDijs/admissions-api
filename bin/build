@@ -1,0 +1,13 @@
+#!/bin/bash
+
+TAG="admissions-api"
+
+if [ "$tag" != "" ]
+then
+  TAG=$tag
+fi
+
+echo "Image tagged as: $TAG"
+
+
+docker build --tag=$TAG .
