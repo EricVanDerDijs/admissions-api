@@ -19,12 +19,12 @@ def init_db(conn):
     print('')
     print('Initializing DB...')
     print('Dropping Tables...')
-    conn.execute(f'DROP TABLE IF EXISTS {USERS_TABLE}')
-    conn.execute(f'DROP TABLE IF EXISTS {TESTS_TABLE}')
-    conn.execute(f'DROP TABLE IF EXISTS {USERS_TESTS_TABLE}')
-    conn.execute(f'DROP TABLE IF EXISTS {QUESTIONS_TABLE}')
+    conn.execute(f'DROP TABLE IF EXISTS {USERS_TESTS_TABLE}') # relationships first
     conn.execute(f'DROP TABLE IF EXISTS {QUESTIONS_TESTS_TABLE}')
     conn.execute(f'DROP TABLE IF EXISTS {RESULTS_TABLE}')
+    conn.execute(f'DROP TABLE IF EXISTS {USERS_TABLE}')# data tables later
+    conn.execute(f'DROP TABLE IF EXISTS {TESTS_TABLE}')
+    conn.execute(f'DROP TABLE IF EXISTS {QUESTIONS_TABLE}')
     
     print('Creating Tables...')
     conn.execute(USERS_TABLE_DEFINITIONS)
