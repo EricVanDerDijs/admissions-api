@@ -21,10 +21,9 @@ def formatRequest(verb, route, *, body = {}, header = {}):
       formatedBody is not None
     ):
       protoHeader = struct.pack(">H", len(formatedHeader))
-      req = protoHeader + formatedHeader + formatedBody
-  if req is None:
+      return (protoHeader + formatedHeader + formatedBody)
+  else:
     raise Exception('Parsing Error')
-  return req
 
 def formatHeader(header):
   verb = header.get('verb')

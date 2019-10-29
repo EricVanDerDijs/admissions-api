@@ -1,6 +1,8 @@
-import asyncio, functools
+import asyncio, functools, socket
 from .formater import formatRequest
 from .reqreader import Reader
+
+runNo = []
 
 class Go:
   def __init__(
@@ -8,38 +10,50 @@ class Go:
     verb,
     route,
     *,
-    host = None,
-    port = None,
+    host_port = None,
     sock = None,
     body = {},
     header = {},
   ):
     if (
-      sock is None or
-      (host is None and port is None)
+      isinstance(host_port, tuple) and
+      isinstance(host_port[0], str) and
+      isinstance(host_port[1], int)
     ):
-      raise Exception('socket or connection address is missing!')
+      self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      try:
+        self._sock.connect( host_port )
+      except Exception as e:
+        self._sock = e
+    elif sock is not None:
+      self._sock = sock
     else:
-      if (
-        isinstance(host, str) and
-        isinstance(port, str)
-      ):
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect( (host, port) )
-      elif sock is not None:
-        self._sock = sock
-      self.req = formatRequest(verb, route, body = body, header = header)
+      raise Exception('socket or connection address is missing!')
+    self.req = formatRequest(verb, route, body = body, header = header)
 
   async def as_coroutine(self):
+    if isinstance(self._sock, Exception):
+      header = { 'code': 500 }
+      body = {}
+      
+      if isinstance(self._sock, ConnectionRefusedError):
+        body = { 'error_code': 'connection-refused', 'error': repr(self._sock) }
+      else: 
+        body = { 'error_code': 'unexpected-error', 'error': repr(self._sock) }
+      
+      return header, body
+    
     if self.req is not None:
       reader = Reader(self._sock)
       loop = asyncio.get_event_loop()
       # Send req
       try:
         await loop.sock_sendall(self._sock, self.req)
-      except Exception as e:
-        print(f'sendall() err: {e}')
-        return None # Error Sending
+      except Exception as e: # Error Sending
+        print(f'sendall() err: {repr(e)}')
+        body = { 'error_code': 'unexpected-error', 'error': repr(e) }
+        header = { 'code': 500 }
+        return header, body
       # Read res
       try:
         res = await asyncio.wait_for(
@@ -48,9 +62,18 @@ class Go:
         )
         return res
       except asyncio.TimeoutError:
-        return None
+        body = { 'error_code': 'timeout-error' }
+        header = { 'code': 408 }
+        return header, body
+      except Exception as e: # Error Reading
+        print(f'reader.read() err: {repr(e)}')
+        body = { 'error_code': 'unexpected-error', 'error': repr(e) }
+        header = { 'code': 500 }
+        return header, body
     else:
-      return None
+      body = { 'error_code': 'no-request-provided' }
+      header = { 'code': 400 }
+      return header, body
 
 
   def with_callback(self, callback = None, args = ()):

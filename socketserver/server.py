@@ -1,4 +1,4 @@
-import socket, asyncio, types
+import socket, asyncio, types, traceback
 from .reqreader import Reader
 from .formater import formatRequest
 import socketserver.constants as constants
@@ -118,7 +118,7 @@ class Server:
           isinstance(handler, types.FunctionType) or
           isinstance(handler, types.MethodType)
         ):
-          resHeader, resBody = await handler(header, body, **self._server_vars)
+          resHeader, resBody = await handler(header, body, self)
           resHeader = {
             **header,
             **resHeader,
@@ -142,8 +142,8 @@ class Server:
             'code': 404
           }
           notFoundBody = {
-            'error': 'not_found',
-            'message': 'The resource your are looking for has not been found'
+            'error_code': 'not_found',
+            'error': 'The resource your are looking for has not been found'
           }
           notFoundResponse = formatRequest(
             verb,
@@ -158,13 +158,14 @@ class Server:
         try:
           # General Err handler
           # responde with 500 err
+          traceback.print_exc()
           gErrHeader = {
             **header,
             'code': 500
           }
           gErrBody = {
-            'error': 'internal_err',
-            'message': repr(e)
+            'error_code': 'internal_err',
+            'error': repr(e)
           }
           generalErrorResponse = formatRequest(
             verb,
