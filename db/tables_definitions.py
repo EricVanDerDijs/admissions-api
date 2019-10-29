@@ -21,6 +21,7 @@ USERS_TABLE_DEFINITIONS = f'''
 TESTS_TABLE_DEFINITIONS = f'''
   CREATE TABLE IF NOT EXISTS {TESTS_TABLE} (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL,
     location_code TEXT NOT NULL,
     inscription_start TEXT NOT NULL,
     inscription_end TEXT NOT NULL,
@@ -46,8 +47,7 @@ QUESTIONS_TABLE_DEFINITIONS = f'''
     options TEXT NOT NULL,
     answ_index INTEGER NOT NULL,
     score REAL NOT NULL,
-    knowledge_area TEXT NOT NULL,
-    test_type TEXT NOT NULL
+    knowledge_area TEXT NOT NULL
   )
 '''
 
