@@ -164,3 +164,103 @@ async def signup(reqHeader, reqBody, server_inst):
       header = { **reqHeader, 'code': 400 }
     
     return header, body
+
+async def signin(reqHeader, reqBody, server_inst):
+    db = server_inst._server_vars.get('db')
+
+    ci = reqBody.get('ci')
+    email = reqBody.get('email')
+
+    body = {}
+    header = {}
+
+    ## CHECK IF DATA IS COMPLETE
+    if (
+      isinstance(ci, int) and
+      isinstance(email, str)
+    ):
+      ## CHECK IF USER ALREADY EXISTS IN LOCAL DB
+      try:
+        userData = await db.queryOne(
+          f'SELECT * FROM {USERS_TABLE} WHERE ci=?',
+          [ci]
+        )
+        if (userData):
+          if(
+            userData['ci'] == ci and
+            userData['email'] == email
+          ):
+            exp = datetime.utcnow() + timedelta(hours=12)
+            token = jwt.encode(
+              { 'user': { 'ci': userData['ci'], 'email': userData['email'] }, 'exp': exp },
+              SECRET
+            )
+
+            userData['session_token'] = token.decode('utf-8')
+
+            await db.queryOne(
+              f'UPDATE {USERS_TABLE} SET session_token=? WHERE ci=?',
+              [userData['session_token'], ci]
+            )
+
+            body = { 'user': userData }
+            header = { **reqHeader, 'code': 200 }
+
+          else:
+            body = { 'error_code': 'invalid-credentials' }
+            header = { **reqHeader, 'code': 403 }
+          
+        else:
+          body = { 'error_code': 'user-does-not-exists' }
+          header = { **reqHeader, 'code': 400 }
+
+      except Exception as e:
+        traceback.print_exc()
+        body = { 'error_code': 'internal-error', 'error': repr(e) }
+        header = { **reqHeader, 'code': 500 }
+
+    else:
+      body = { 'error_code': 'missing-params' }
+      header = { **reqHeader, 'code': 400 }
+    
+    return header, body
+
+async def logout(reqHeader, reqBody, server_inst):
+    db = server_inst._server_vars.get('db')
+
+    ci = reqBody.get('ci')
+
+    body = {}
+    header = {}
+
+    ## CHECK IF DATA IS COMPLETE
+    if isinstance(ci, int):
+      ## CHECK IF USER ALREADY EXISTS IN LOCAL DB
+      try:
+        userData = await db.queryOne(
+          f'SELECT * FROM {USERS_TABLE} WHERE ci=?',
+          [ci]
+        )
+        if (userData):
+          userData = await db.queryOne(
+            f'UPDATE {USERS_TABLE} SET session_token=? WHERE ci=?',
+            ["", ci]
+          )
+
+          body = { 'message': "successful logout" }
+          header = { **reqHeader, 'code': 200 }
+          
+        else:
+          body = { 'error_code': 'user-does-not-exists' }
+          header = { **reqHeader, 'code': 400 }
+
+      except Exception as e:
+        traceback.print_exc()
+        body = { 'error_code': 'internal-error', 'error': repr(e) }
+        header = { **reqHeader, 'code': 500 }
+
+    else:
+      body = { 'error_code': 'missing-params' }
+      header = { **reqHeader, 'code': 400 }
+    
+    return header, body
