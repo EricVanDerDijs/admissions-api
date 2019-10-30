@@ -165,85 +165,94 @@ async def generateTest(reqHeader, reqBody, server_inst):
       test and
       test.get('location_code') == location_code
     ):
-      now = datetime.utcnow()
-      test_start = datetime.utcfromtimestamp(test.get('test_start'))
-      test_end = datetime.utcfromtimestamp(test.get('test_end'))
+      testAlreadyGenerated = await db.queryOne(
+        f'SELECT * FROM {RESULTS_TABLE} WHERE user_ci = ? AND test_id = ?',
+        [user.get('ci'), test_id]
+      )
+      # CHECK IF THE USER HAS ALREADY GENERATED A TEST
+      if not testAlreadyGenerated:
+        now = datetime.utcnow()
+        test_start = datetime.utcfromtimestamp(test.get('test_start'))
+        test_end = datetime.utcfromtimestamp(test.get('test_end'))
 
-      if( # CHECK IF THE TEST HAS STARTED
-        now >= test_start and
-        now <= test_end
-      ):
-        enrollment = await db.queryOne(
-          f'SELECT * FROM {USERS_TESTS_TABLE} WHERE user_ci = ? AND test_id = ?',
-          [user.get('ci'), test_id]
-        )
-        if (enrollment): # CHECK IF THE USER HAS ENROLLED THE TEST
-
-          # GET TEST QUESTIONS
-          mathQuestions = await db.queryMany(
-            f'SELECT * FROM {QUESTIONS_TABLE} WHERE knowledge_area = "math"'
+        if( # CHECK IF THE TEST HAS STARTED
+          now >= test_start and
+          now <= test_end
+        ):
+          enrollment = await db.queryOne(
+            f'SELECT * FROM {USERS_TESTS_TABLE} WHERE user_ci = ? AND test_id = ?',
+            [user.get('ci'), test_id]
           )
-          langQuestions = await db.queryMany(
-            f'SELECT * FROM {QUESTIONS_TABLE} WHERE knowledge_area = "language"'
-          )
+          if (enrollment): # CHECK IF THE USER HAS ENROLLED THE TEST
 
-          # PICK QUESTIONS RANDOMLY DEPENDING ON TEST TYPE
-          generatedTestQuestions = []
-          if (rest.get('type') == 'Humanidades'):
-            for i in range(5):
-              if i == 0:
-                generatedTestQuestions.append(
-                  mathQuestions.pop( random.randrange(len(mathQuestions)) )
-                )
-              else:
-                generatedTestQuestions.append(
-                  langQuestions.pop( random.randrange(len(mathQuestions)) )
-                )
-          elif (rest.get('type') == 'Ciencias'):
-            for i in range(5):
-              if i == 0:
-                generatedTestQuestions.append(
-                  langQuestions.pop( random.randrange(len(mathQuestions)) )
-                )
-              else:
-                generatedTestQuestions.append(
-                  mathQuestions.pop( random.randrange(len(mathQuestions)) )
-                )
-          
-          # GENERATE CLEAN QUESTIONS FOR RESPONSE
-          questions_without_answers = [question.pop('answ_index', None) for question in generatedTestQuestions]
-          # GET IDs AND SCOREs FOR RESULT CREATION
-          questions_ids = [question.get('id') for question in questions_without_answers]
-          questions_ids = json.dumps(questions_ids)
-
-          try:
-            await db.queryOne(f'''
-                INSERT INTO {RESULTS_TABLE} (questions, user_ci, test_id)
-                VALUES (?, ?, ?)
-              ''',
-              [questions_ids, user.get('ci'), test_id]
+            # GET TEST QUESTIONS
+            mathQuestions = await db.queryMany(
+              f'SELECT * FROM {QUESTIONS_TABLE} WHERE knowledge_area = "math"'
+            )
+            langQuestions = await db.queryMany(
+              f'SELECT * FROM {QUESTIONS_TABLE} WHERE knowledge_area = "language"'
             )
 
-            # Every write operation updates current user's data_version
-            await db.queryOne(
-              f'UPDATE {USERS_TABLE} SET data_version = data_version + 1 WHERE ci = ?',
-              [user.get('ci')]
-            )
+            # PICK QUESTIONS RANDOMLY DEPENDING ON TEST TYPE
+            generatedTestQuestions = []
+            if (rest.get('type') == 'Humanidades'):
+              for i in range(5):
+                if i == 0:
+                  generatedTestQuestions.append(
+                    mathQuestions.pop( random.randrange(len(mathQuestions)) )
+                  )
+                else:
+                  generatedTestQuestions.append(
+                    langQuestions.pop( random.randrange(len(mathQuestions)) )
+                  )
+            elif (rest.get('type') == 'Ciencias'):
+              for i in range(5):
+                if i == 0:
+                  generatedTestQuestions.append(
+                    langQuestions.pop( random.randrange(len(mathQuestions)) )
+                  )
+                else:
+                  generatedTestQuestions.append(
+                    mathQuestions.pop( random.randrange(len(mathQuestions)) )
+                  )
             
-            test.pop('location_code', None)
-            test['questions'] = questions_without_answers
+            # GENERATE CLEAN QUESTIONS FOR RESPONSE
+            questions_without_answers = [question.pop('answ_index', None) for question in generatedTestQuestions]
+            # GET IDs AND SCOREs FOR RESULT CREATION
+            questions_ids = [question.get('id') for question in questions_without_answers]
+            questions_ids = json.dumps(questions_ids)
 
-            body = { 'test': test }
-            header = { **reqHeader, 'code': 200 }
-          except Exception as e:
-            traceback.print_exc()
-            body = { 'error_code': 'internal-error', 'error': repr(e) }
-            header = { **reqHeader, 'code': 500 }
+            try:
+              await db.queryOne(f'''
+                  INSERT INTO {RESULTS_TABLE} (questions, user_ci, test_id)
+                  VALUES (?, ?, ?)
+                ''',
+                [questions_ids, user.get('ci'), test_id]
+              )
+
+              # Every write operation updates current user's data_version
+              await db.queryOne(
+                f'UPDATE {USERS_TABLE} SET data_version = data_version + 1 WHERE ci = ?',
+                [user.get('ci')]
+              )
+              
+              test.pop('location_code', None)
+              test['questions'] = questions_without_answers
+
+              body = { 'test': test }
+              header = { **reqHeader, 'code': 200 }
+            except Exception as e:
+              traceback.print_exc()
+              body = { 'error_code': 'internal-error', 'error': repr(e) }
+              header = { **reqHeader, 'code': 500 }
+          else:
+            body = { 'error_code': 'user-not-enrolled' }
+            header = { **reqHeader, 'code': 403 }
         else:
-          body = { 'error_code': 'user-not-enrolled' }
+          body = { 'error_code': 'test-missed' }
           header = { **reqHeader, 'code': 403 }
       else:
-        body = { 'error_code': 'test-has-not-started' }
+        body = { 'error_code': 'test-already-generated' }
         header = { **reqHeader, 'code': 403 }
     else:
       body = { 'error_code': 'wrong-location-code' }
