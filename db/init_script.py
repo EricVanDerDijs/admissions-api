@@ -52,8 +52,8 @@ def init_db(conn):
         test_start,
         test_end
       ) VALUES (
-        "Humanidades",
-        "LOC_HUM_1",
+        'Humanidades',
+        'LOC_HUM_1',
         {int(datetime.utcnow().timestamp())},
         {int(datetime.utcnow() + timedelta(minutes=30))},
         {int(datetime.utcnow() + timedelta(minutes=60))},
@@ -68,8 +68,8 @@ def init_db(conn):
         test_start,
         test_end
       ) VALUES (
-        "Ciencias",
-        "LOC_CIENC_1",
+        'Ciencias',
+        'LOC_CIENC_1',
         {int(datetime.utcnow().isoformat())},
         {int(datetime.utcnow() + timedelta(minutes=90))},
         {int(datetime.utcnow() + timedelta(minutes=120))},
@@ -86,9 +86,9 @@ def init_db(conn):
       sqlInsertQuestions += f'''
       INSERT INTO {QUESTIONS_TABLE} (question, options, answ_index, score, knowledge_area)
       VALUES (
-        "Question {i}.",
-        "['Option {i}.1', 'Option {i}.2', 'Option {i}.3', 'Option {i}.4']",
-        {answ_index},
+        'Question {i}.',
+        '["Option {i}.1', "Option {i}.2", "Option {i}.3", "Option {i}.4"]',
+        "{answ_index}",
         4.0,
         "{area}"
       );

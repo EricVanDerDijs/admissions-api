@@ -1,9 +1,9 @@
-import os, sys, traceback, json, asyncio
+import os, sys, json, traceback, random
 from datetime import datetime, timedelta
 import jwt
 
 sys.path.append("..")
-from db.tables_definitions import USERS_TABLE, TESTS_TABLE, RESULTS_TABLE
+from db.tables_definitions import USERS_TABLE, TESTS_TABLE, RESULTS_TABLE, QUESTIONS_TABLE
 from socketserver.go import Go
 
 SECRET = os.getenv('SECRET', 'secret')
@@ -118,6 +118,12 @@ async def enroll(reqHeader, reqBody, server_inst):
           [user.get('ci'), test_id]
         )
 
+        # Every write operation updates current user's data_version
+        await db.queryOne(
+          f'UPDATE {USERS_TABLE} SET data_version = data_version + 1 WHERE ci = ?',
+          [user.get('ci')]
+        )
+
         body = { 'test_id': test_id, 'message': 'enrolled successfully!' }
         header = { **reqHeader, 'code': 200 }
 
@@ -134,3 +140,117 @@ async def enroll(reqHeader, reqBody, server_inst):
     
   return header, body
 
+async def generateTest(reqHeader, reqBody, server_inst):
+  db = server_inst._server_vars.get('db')
+
+  token = reqBody.get('token', '')
+  test_id = reqBody.get('test_id')
+  location_code = reqBody.get('location_code')
+
+  body = {}
+  header = {}
+
+  # DECODE TOKEN, RETURN UNAUTHORIZED ERROR IF FAILS
+  try:
+    token = jwt.decode(token, SECRET)
+  except Exception as e:
+    body = { 'error_code': 'unauthorized' }
+    header = { **reqHeader, 'code': 403 }
+    return header, body
+  
+  user = token.get('user')
+  try:
+    test = await db.queryOne(f'SELECT * FROM {TESTS_TABLE} WHERE id = ?', [test_id])
+    if ( # CHECK IF THE PROVIDED LOCATION CODE MATCHES
+      test and
+      test.get('location_code') == location_code
+    ):
+      now = datetime.utcnow()
+      test_start = datetime.utcfromtimestamp(test.get('test_start'))
+      test_end = datetime.utcfromtimestamp(test.get('test_end'))
+
+      if( # CHECK IF THE TEST HAS STARTED
+        now >= test_start and
+        now <= test_end
+      ):
+        enrollment = await db.queryOne(
+          f'SELECT * FROM {USERS_TESTS_TABLE} WHERE user_ci = ? AND test_id = ?',
+          [user.get('ci'), test_id]
+        )
+        if (enrollment): # CHECK IF THE USER HAS ENROLLED THE TEST
+
+          # GET TEST QUESTIONS
+          mathQuestions = await db.queryMany(
+            f'SELECT * FROM {QUESTIONS_TABLE} WHERE knowledge_area = "math"'
+          )
+          langQuestions = await db.queryMany(
+            f'SELECT * FROM {QUESTIONS_TABLE} WHERE knowledge_area = "language"'
+          )
+
+          # PICK QUESTIONS RANDOMLY DEPENDING ON TEST TYPE
+          generatedTestQuestions = []
+          if (rest.get('type') == 'Humanidades'):
+            for i in range(5):
+              if i == 0:
+                generatedTestQuestions.append(
+                  mathQuestions.pop( random.randrange(len(mathQuestions)) )
+                )
+              else:
+                generatedTestQuestions.append(
+                  langQuestions.pop( random.randrange(len(mathQuestions)) )
+                )
+          elif (rest.get('type') == 'Ciencias'):
+            for i in range(5):
+              if i == 0:
+                generatedTestQuestions.append(
+                  langQuestions.pop( random.randrange(len(mathQuestions)) )
+                )
+              else:
+                generatedTestQuestions.append(
+                  mathQuestions.pop( random.randrange(len(mathQuestions)) )
+                )
+          
+          # GENERATE CLEAN QUESTIONS FOR RESPONSE
+          questions_without_answers = [question.pop('answ_index', None) for question in generatedTestQuestions]
+          # GET IDs AND SCOREs FOR RESULT CREATION
+          questions_ids = [question.get('id') for question in questions_without_answers]
+          questions_ids = json.dumps(questions_ids)
+
+          try:
+            await db.queryOne(f'''
+                INSERT INTO {RESULTS_TABLE} (questions, user_ci, test_id)
+                VALUES (?, ?, ?)
+              ''',
+              [questions_ids, user.get('ci'), test_id]
+            )
+
+            # Every write operation updates current user's data_version
+            await db.queryOne(
+              f'UPDATE {USERS_TABLE} SET data_version = data_version + 1 WHERE ci = ?',
+              [user.get('ci')]
+            )
+            
+            test.pop('location_code', None)
+            test['questions'] = questions_without_answers
+
+            body = { 'test': test }
+            header = { **reqHeader, 'code': 200 }
+          except Exception as e:
+            traceback.print_exc()
+            body = { 'error_code': 'internal-error', 'error': repr(e) }
+            header = { **reqHeader, 'code': 500 }
+        else:
+          body = { 'error_code': 'user-not-enrolled' }
+          header = { **reqHeader, 'code': 403 }
+      else:
+        body = { 'error_code': 'test-has-not-started' }
+        header = { **reqHeader, 'code': 403 }
+    else:
+      body = { 'error_code': 'wrong-location-code' }
+      header = { **reqHeader, 'code': 403 }
+  except Exception as e:
+    traceback.print_exc()
+    body = { 'error_code': 'internal-error', 'error': repr(e) }
+    header = { **reqHeader, 'code': 500 }
+    
+  return header, body
