@@ -3,8 +3,12 @@ from datetime import datetime, timedelta
 import jwt
 
 sys.path.append("..")
-from db.tables_definitions import USERS_TABLE, TESTS_TABLE, RESULTS_TABLE, QUESTIONS_TABLE
 from socketserver.go import Go
+from db.tables_definitions import (USERS_TABLE,
+USERS_TESTS_TABLE,
+TESTS_TABLE,
+RESULTS_TABLE,
+QUESTIONS_TABLE)
 
 SECRET = os.getenv('SECRET', 'secret')
 
@@ -26,7 +30,7 @@ async def getTest(reqHeader, reqBody, server_inst):
   
   user = token.get('user')
   try:
-    allTests = await db.queryOne(f'SELECT * FROM {TESTS_TABLE}')
+    allTests = await db.queryMany(f'SELECT * FROM {TESTS_TABLE}')
     userTests = await db.queryMany(f'''
         SELECT * FROM {USERS_TESTS_TABLE}
         WHERE user_ci = ?
@@ -67,6 +71,7 @@ async def getTest(reqHeader, reqBody, server_inst):
         else:
           allTests[i]['onGoingTest'] = False
           allTests[i]['hasResult'] = True
+      allTests[i].pop('location_code', None)
     
     body = { 'tests': allTests }
     header = { **reqHeader, 'code': 200 }
@@ -102,41 +107,54 @@ async def enroll(reqHeader, reqBody, server_inst):
     isinstance(test_id, int)
   ):
     try:
-      enrolledTest = await db.queryOne(f'''
-          SELECT * FROM {USERS_TESTS_TABLE}
-          WHERE user_ci = ? AND test_id = ?
-        ''',
-        [user.get('ci'), test_id]
-      )
+      test = await db.queryOne(f'SELECT * FROM {TESTS_TABLE} WHERE id = ?', [test_id])
+      if(test):
+        now = datetime.utcnow()
+        inscription_start = datetime.utcfromtimestamp(test.get('inscription_start'))
+        inscription_end = datetime.utcfromtimestamp(test.get('inscription_end'))
 
-      if (enrolledTest):
-        body = { 'error_code': 'user-already-enrolled' }
-        header = { **reqHeader, 'code': 409 }
-
-      else:
-        try:
-          await db.queryOne(f'''
-              INSERT INTO {USERS_TESTS_TABLE} (user_ci, test_id)
-              VALUES (?, ?)
+        if (
+          now >= inscription_start and
+          now <= inscription_end
+        ):
+          enrolledTest = await db.queryOne(f'''
+              SELECT * FROM {USERS_TESTS_TABLE}
+              WHERE user_ci = ? AND test_id = ?
             ''',
             [user.get('ci'), test_id]
           )
 
-          # Every write operation updates current user's data_version
-          await db.queryOne(
-            f'UPDATE {USERS_TABLE} SET data_version = data_version + 1 WHERE ci = ?',
-            [user.get('ci')]
-          )
+          if not enrolledTest:
+            try:
+              await db.queryOne(f'''
+                  INSERT INTO {USERS_TESTS_TABLE} (user_ci, test_id)
+                  VALUES (?, ?)
+                ''',
+                [user.get('ci'), test_id]
+              )
 
-          body = { 'test_id': test_id, 'message': 'enrolled successfully!' }
-          header = { **reqHeader, 'code': 200 }
+              # Every write operation updates current user's data_version
+              await db.queryOne(
+                f'UPDATE {USERS_TABLE} SET data_version = data_version + 1 WHERE ci = ?',
+                [user.get('ci')]
+              )
 
-        except Exception as e:
-          traceback.print_exc()
-          body = { 'error_code': 'internal-error', 'error': repr(e) }
-          header = { **reqHeader, 'code': 500 }
+              body = { 'test_id': test_id, 'message': 'enrolled successfully!' }
+              header = { **reqHeader, 'code': 200 }
 
-
+            except Exception as e:
+              traceback.print_exc()
+              body = { 'error_code': 'internal-error', 'error': repr(e) }
+              header = { **reqHeader, 'code': 500 }
+          else:
+            body = { 'error_code': 'user-already-enrolled' }
+            header = { **reqHeader, 'code': 409 }
+        else:
+          body = { 'error_code': 'enrolment-period-missed' }
+          header = { **reqHeader, 'code': 403 }
+      else:
+        body = { 'error_code': 'test-does-not-exists' }
+        header = { **reqHeader, 'code': 400 }
     except Exception as e:
       traceback.print_exc()
       body = { 'error_code': 'internal-error', 'error': repr(e) }
@@ -207,7 +225,7 @@ async def generateTest(reqHeader, reqBody, server_inst):
 
               # PICK QUESTIONS RANDOMLY DEPENDING ON TEST TYPE
               generatedTestQuestions = []
-              if (rest.get('type') == 'Humanidades'):
+              if (test.get('type') == 'Humanidades'):
                 for i in range(5):
                   if i == 0:
                     generatedTestQuestions.append(
@@ -228,10 +246,15 @@ async def generateTest(reqHeader, reqBody, server_inst):
                       mathQuestions.pop( random.randrange(len(mathQuestions)) )
                     )
               
-              # GENERATE CLEAN QUESTIONS FOR RESPONSE
-              questions_without_answers = [question.pop('answ_index', None) for question in generatedTestQuestions]
-              # GET IDs AND SCOREs FOR RESULT CREATION
-              questions_ids = [question.get('id') for question in questions_without_answers]
+              # GENERATE CLEAN QUESTIONS FOR RESPONSE AND GET IDs FOR RESULT CREATION
+              questions_without_answers = []
+              questions_ids = []
+
+              for i, question in enumerate(generatedTestQuestions):
+                questions_ids.append( question.get('id') )
+                questions_without_answers.append(question)
+                questions_without_answers[i].pop('answ_index', None)
+
               questions_ids = json.dumps(questions_ids)
 
               try:

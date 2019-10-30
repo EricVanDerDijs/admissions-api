@@ -14,7 +14,6 @@ async def calcResult(reqHeader, reqBody, server_inst):
   token = reqBody.get('token', '')
   test_id = reqBody.get('test_id')
   location_code = reqBody.get('location_code')
-  questions = reqBody.get('questions')
   answers = reqBody.get('answers')
 
   body = {}
@@ -33,9 +32,8 @@ async def calcResult(reqHeader, reqBody, server_inst):
   if (
     isinstance(test_id, int) and
     isinstance(location_code, str) and
-    isinstance(questions, list) and
     isinstance(answers, list) and
-    len(questions) == len(answers)
+    len(answers) == 5
   ):
     try:
       test = await db.queryOne(f'SELECT * FROM {TESTS_TABLE} WHERE id = ?', [test_id])
@@ -43,12 +41,12 @@ async def calcResult(reqHeader, reqBody, server_inst):
         test and
         test.get('location_code') == location_code
       ):
-        testAlreadyGenerated = await db.queryOne(
+        generatedTest = await db.queryOne(
           f'SELECT * FROM {RESULTS_TABLE} WHERE user_ci = ? AND test_id = ?',
           [user.get('ci'), test_id]
         )
         # CHECK IF THE USER HAS ALREADY GENERATED THE TEST
-        if testAlreadyGenerated:
+        if generatedTest:
           now = datetime.utcnow()
           test_start = datetime.utcfromtimestamp(test.get('test_start'))
           test_end = datetime.utcfromtimestamp(test.get('test_end'))
@@ -58,9 +56,11 @@ async def calcResult(reqHeader, reqBody, server_inst):
             now <= test_end
           ):
             # GET TEST QUESTIONS
+            questions = json.loads( generatedTest.get('questions') )
+            placeholders = ['?' for x in questions]
             testQuestions = await db.queryMany(
-              f'SELECT * FROM {QUESTIONS_TABLE} WHERE id IN ?',
-              [tuple(questions)]
+              f'SELECT * FROM {QUESTIONS_TABLE} WHERE id IN {"("+",".join(placeholders)+")"}',
+              questions
             )
 
             # GET TEST RESULTS
@@ -157,11 +157,14 @@ async def getResult(reqHeader, reqBody, server_inst):
         test = await db.queryOne(f'SELECT * FROM {TESTS_TABLE} WHERE id = ?', [test_id])
 
         questions = json.loads( result.get('questions') )
+        placeholders = ['?' for x in questions]
         testQuestions = await db.queryMany(
-          f'SELECT * FROM {QUESTIONS_TABLE} WHERE id IN ?',
-          [tuple(questions)]
+          f'SELECT * FROM {QUESTIONS_TABLE} WHERE id IN {"("+",".join(placeholders)+")"}',
+          questions
         )
-        testQuestions = [question.pop('answ_index', None) for question in testQuestions]
+
+        for i, question in enumerate(testQuestions):
+          testQuestions[i].pop('answ_index', None)
 
         score = result.get('score')
         answers = json.loads( result.get('answers') )

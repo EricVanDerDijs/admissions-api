@@ -43,6 +43,15 @@ def init_db(conn):
     conn.execute(sqlInserAdmin)
 
     print('Populating test with 2 tests...')
+    test_1_insc_start = int(datetime.utcnow().timestamp())
+    test_1_insc_end = int( (datetime.utcnow() + timedelta(minutes=30)).timestamp() )
+    test_1_start = int(datetime.utcnow().timestamp())
+    test_1_end = int( (datetime.utcnow() + timedelta(minutes=90)).timestamp() )
+
+    test_2_insc_start = int(datetime.utcnow().timestamp())
+    test_2_insc_end = int( (datetime.utcnow() + timedelta(minutes=90)).timestamp() )
+    test_2_start = int( (datetime.utcnow() + timedelta(minutes=120)).timestamp() )
+    test_2_end = int( (datetime.utcnow() + timedelta(minutes=150)).timestamp() )
     sqlInserTests = f'''
       INSERT INTO {TESTS_TABLE} (
         type,
@@ -54,10 +63,10 @@ def init_db(conn):
       ) VALUES (
         'Humanidades',
         'LOC_HUM_1',
-        {int(datetime.utcnow().timestamp())},
-        {int(datetime.utcnow() + timedelta(minutes=30))},
-        {int(datetime.utcnow() + timedelta(minutes=60))},
-        {int(datetime.utcnow() + timedelta(minutes=90))}
+        {test_1_insc_start},
+        {test_1_insc_end},
+        {test_1_start},
+        {test_1_end}
       );
 
       INSERT INTO {TESTS_TABLE} (
@@ -70,10 +79,10 @@ def init_db(conn):
       ) VALUES (
         'Ciencias',
         'LOC_CIENC_1',
-        {int(datetime.utcnow().isoformat())},
-        {int(datetime.utcnow() + timedelta(minutes=90))},
-        {int(datetime.utcnow() + timedelta(minutes=120))},
-        {int(datetime.utcnow() + timedelta(minutes=150))}
+        {test_2_insc_start},
+        {test_2_insc_end},
+        {test_2_start},
+        {test_2_end}
       );
     '''
     conn.executescript(sqlInserTests)
@@ -84,15 +93,14 @@ def init_db(conn):
       answ_index = random.randrange(0, 4)
       area = 'math' if (random.random() > 0.5) else 'language'
       sqlInsertQuestions += f'''
-      INSERT INTO {QUESTIONS_TABLE} (question, options, answ_index, score, knowledge_area)
-      VALUES (
-        'Question {i}.',
-        '["Option {i}.1', "Option {i}.2", "Option {i}.3", "Option {i}.4"]',
-        "{answ_index}",
-        4.0,
-        "{area}"
-      );
-
+        INSERT INTO {QUESTIONS_TABLE} (question, options, answ_index, score, knowledge_area)
+        VALUES (
+          "Question {i}.",
+          "[""Option {i}.1"", ""Option {i}.2"", ""Option {i}.3"", ""Option {i}.4""]",
+          "{answ_index}",
+          4.0,
+          "{area}"
+        );
       '''
     conn.executescript(sqlInsertQuestions)
     

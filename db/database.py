@@ -12,7 +12,7 @@ class Database:
       init_db(self.connection)
     
 
-  async def queryMany(self, query, values, limit=None):
+  async def queryMany(self, query, values=None, limit=None):
     if isinstance(query, str):
       with self.connection:
         cursor = self.connection.cursor()
@@ -39,7 +39,7 @@ class Database:
     else:
       raise Exception('No query was given')
 
-  async def queryOne(self, query, values):
+  async def queryOne(self, query, values=None):
     if isinstance(query, str):
       with self.connection:
         cursor = self.connection.cursor()
