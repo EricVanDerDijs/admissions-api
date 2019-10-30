@@ -54,10 +54,10 @@ def init_db(conn):
       ) VALUES (
         "Humanidades",
         "LOC_HUM_1",
-        "{datetime.utcnow().isoformat()}",
-        "{(datetime.utcnow() + timedelta(minutes=30)).isoformat()}",
-        "{(datetime.utcnow() + timedelta(minutes=60)).isoformat()}",
-        "{(datetime.utcnow() + timedelta(minutes=90)).isoformat()}"
+        {int(datetime.utcnow().timestamp())},
+        {int(datetime.utcnow() + timedelta(minutes=30))},
+        {int(datetime.utcnow() + timedelta(minutes=60))},
+        {int(datetime.utcnow() + timedelta(minutes=90))}
       );
 
       INSERT INTO {TESTS_TABLE} (
@@ -70,10 +70,10 @@ def init_db(conn):
       ) VALUES (
         "Ciencias",
         "LOC_CIENC_1",
-        "{datetime.utcnow().isoformat()}",
-        "{(datetime.utcnow() + timedelta(minutes=90)).isoformat()}",
-        "{(datetime.utcnow() + timedelta(minutes=120)).isoformat()}",
-        "{(datetime.utcnow() + timedelta(minutes=150)).isoformat()}"
+        {int(datetime.utcnow().isoformat())},
+        {int(datetime.utcnow() + timedelta(minutes=90))},
+        {int(datetime.utcnow() + timedelta(minutes=120))},
+        {int(datetime.utcnow() + timedelta(minutes=150))}
       );
     '''
     conn.executescript(sqlInserTests)

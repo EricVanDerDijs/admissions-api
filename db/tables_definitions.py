@@ -23,10 +23,10 @@ TESTS_TABLE_DEFINITIONS = f'''
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     type TEXT NOT NULL,
     location_code TEXT NOT NULL,
-    inscription_start TEXT NOT NULL,
-    inscription_end TEXT NOT NULL,
-    test_start TEXT NOT NULL,
-    test_end TEXT NOT NULL
+    inscription_start INTEGER NOT NULL,
+    inscription_end INTEGER NOT NULL,
+    test_start INTEGER NOT NULL,
+    test_end INTEGER NOT NULL
   )
 '''
 
@@ -64,10 +64,10 @@ QUESTIONS_TESTS_TABLE_DEFINITIONS = f'''
 RESULTS_TABLE_DEFINITIONS = f'''
   CREATE TABLE IF NOT EXISTS {RESULTS_TABLE} (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    questions TEXT NOT NULL,
-    answers TEXT NOT NULL,
-    score_per_question TEXT NOT NULL,
-    score REAL NOT NULL,
+    questions TEXT NOT NULL DEFAULT '[]',
+    answers TEXT NOT NULL DEFAULT '[]',
+    score_per_question TEXT NOT NULL DEFAULT '[]',
+    score REAL NOT NULL DEFAULT 0.0,
     user_ci INTEGER NOT NULL,
     test_id INTEGER NOT NULL,
     FOREIGN KEY(user_ci) REFERENCES users(ci),
