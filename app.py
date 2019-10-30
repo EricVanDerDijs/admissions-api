@@ -4,6 +4,7 @@ from db.database import Database
 from reqhandlers.sync import sync_getUser, sync_insertUser, sync_deleteUser
 from reqhandlers.auth import signup, signin, logout
 from reqhandlers.tests import getTest, enroll, generateTest
+from reqhandlers.results import calcResult, getResult
 
 INIT_DB = os.getenv('INIT_DB', False)
 db = Database('./storage/admissions.db', initialize = INIT_DB)
@@ -23,5 +24,8 @@ serv.post('/logout', logout)
 serv.get('/tests/user', getTest)
 serv.post('/tests/user/enroll', enroll)
 serv.get('/tests/new', generateTest)
+
+serv.post('/results', calcResult)
+serv.get('/results/test', getResult)
 
 serv.run()
