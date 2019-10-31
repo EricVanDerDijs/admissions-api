@@ -6,7 +6,12 @@ DETACH="-it"
 TAG="1"
 
 # Get docker ip addrs
-HOST=$(sudo docker network inspect bridge --format='{{(index .IPAM.Config 0).Gateway}}')
+HOST="172.17.0.1"
+
+if [ "$host" != "" ]
+then
+  HOST=$host
+fi
 
 if [ "$port" != "" ]
 then
