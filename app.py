@@ -1,7 +1,9 @@
 import os
 from socketserver.server import Server
 from db.database import Database
-from reqhandlers.sync import sync_getUser, sync_insertUser, sync_deleteUser
+from reqhandlers.sync import (sync_getUser, sync_insertUser,
+sync_deleteUser, sync_upsertUser, sync_getUserTests,
+sync_upsertUserTests, sync_getUserResults, sync_upsertUserResults)
 from reqhandlers.auth import signup, signin, logout
 from reqhandlers.tests import getTest, enroll, generateTest
 from reqhandlers.results import calcResult, getResult
@@ -16,6 +18,13 @@ serv.use('db', db)
 serv.get('/sync_user', sync_getUser)
 serv.post('/sync_user', sync_insertUser)
 serv.delete('/sync_user', sync_deleteUser)
+serv.put('/sync_user', sync_upsertUser)
+
+serv.get('/sync_user/tests', sync_getUserTests)
+serv.put('/sync_user/tests', sync_upsertUserTests)
+
+serv.get('/sync_user/results', sync_getUserResults)
+serv.put('/sync_user/results', sync_upsertUserResults)
 
 serv.post('/signup', signup)
 serv.post('/signin', signin)
