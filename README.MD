@@ -19,7 +19,7 @@ Para correrlo utiliza los archivos que se encuentran en la carpeta bin te la sig
 
 - **Con opciones:**
 
-  `sudo port="4000" "detach=true" ./bin/run`
+  `sudo port="4000" detach="true" ./bin/run`
 
 - **Sin opciones:**
 

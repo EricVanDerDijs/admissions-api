@@ -432,12 +432,16 @@ async def logout(reqHeader, reqBody, server_inst):
     db = server_inst._server_vars.get('db')
 
     ci = reqBody.get('ci')
+    token = reqBody.get('token')
 
     body = {}
     header = {}
 
     ## CHECK IF DATA IS COMPLETE
-    if isinstance(ci, int):
+    if (
+      isinstance(ci, int) and
+      isinstance(token, str)
+    ):
       ## CHECK IF USER ALREADY EXISTS IN LOCAL DB
       try:
         userData = await db.queryOne(
@@ -445,23 +449,78 @@ async def logout(reqHeader, reqBody, server_inst):
           [ci]
         )
         if (userData):
-          userData = await db.queryOne(
-            f'UPDATE {USERS_TABLE} SET session_token=? WHERE ci=?',
-            ["", ci]
-          )
+          if (userData.get('session_token') == token):
+            ## START DATA REPLICATION FROM LOCAL DB
+            # Try to UPDATE USER on DB replicas
+            await asyncio.gather(
+              *[ #this list is spread into the gather method
+                Go(
+                  'PUT',
+                  '/sync_user',
+                  host_port = address,
+                  body = { 'user': userData, 'replicas_secret': REPLICAS_SECRET }
+                ).as_coroutine()
+                for address
+                in REPLICAS_ADDRESSES
+              ],
+              return_exceptions = True
+            )
 
-          body = { 'message': "successful logout" }
-          header = { **reqHeader, 'code': 200 }
-          
+            # Try to UPDATE USER_TESTS on DB replicas
+            userTests = await db.queryMany(
+              f'SELECT * FROM {USERS_TESTS_TABLE} WHERE user_ci=?',
+              [userData.get('ci')]
+            )
+            await asyncio.gather(
+              *[ #this list is spread into the gather method
+                Go(
+                  'PUT',
+                  '/sync_user/tests',
+                  host_port = address,
+                  body = { 'user_tests': userTests, 'user_ci': userData.get('ci'), 'replicas_secret': REPLICAS_SECRET }
+                ).as_coroutine()
+                for address
+                in REPLICAS_ADDRESSES
+              ],
+              return_exceptions = True
+            )
+
+            # Try to UPDATE USER_RESULTS on DB replicas
+            userResults = await db.queryMany(
+              f'SELECT * FROM {RESULTS_TABLE} WHERE user_ci=?',
+              [userData.get('ci')]
+            )
+            await asyncio.gather(
+              *[ #this list is spread into the gather method
+                Go(
+                  'PUT',
+                  '/sync_user/results',
+                  host_port = address,
+                  body = { 'user_results': userResults, 'user_ci': userData.get('ci'), 'replicas_secret': REPLICAS_SECRET }
+                ).as_coroutine()
+                for address
+                in REPLICAS_ADDRESSES
+              ],
+              return_exceptions = True
+            )
+
+            userData = await db.queryOne(
+              f'UPDATE {USERS_TABLE} SET session_token=? WHERE ci=?',
+              ["", ci]
+            )
+
+            body = { 'message': "successful logout" }
+            header = { **reqHeader, 'code': 200 }
+          else:
+            body = { 'error_code': 'token-doesnt-match-current-session' }
+            header = { **reqHeader, 'code': 403 }
         else:
           body = { 'error_code': 'user-does-not-exists' }
           header = { **reqHeader, 'code': 400 }
-
       except Exception as e:
         traceback.print_exc()
         body = { 'error_code': 'internal-error', 'error': repr(e) }
         header = { **reqHeader, 'code': 500 }
-
     else:
       body = { 'error_code': 'missing-params' }
       header = { **reqHeader, 'code': 400 }

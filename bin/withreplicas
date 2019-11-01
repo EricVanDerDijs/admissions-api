@@ -1,0 +1,17 @@
+#!/bin/bash
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+
+INIT_DB=""
+
+if [ "$init_db" != "" ]
+then
+  INIT_DB=$init_db
+fi
+
+echo "server 1: port 3010"
+detach="true" port="3010" tag="1" init_db="$INIT_DB" $DIR/run
+echo "server 1: port 3020"
+detach="true" port="3020" tag="2" init_db="$INIT_DB" $DIR/run
+echo "server 1: port 3030"
+detach="true" port="3030" tag="3" init_db="$INIT_DB" $DIR/run
