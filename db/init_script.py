@@ -90,7 +90,7 @@ def init_db(conn):
     print('Populating questions with 100 questions...')
     sqlInsertQuestions = ''
     for i in range(1, 101):
-      answ_index = random.randrange(0, 4)
+      answ_index = 1
       area = 'math' if (random.random() > 0.5) else 'language'
       sqlInsertQuestions += f'''
         INSERT INTO {QUESTIONS_TABLE} (question, options, answ_index, score, knowledge_area)

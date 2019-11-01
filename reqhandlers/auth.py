@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import jwt
 
 sys.path.append("..")
-from db.tables_definitions import USERS_TABLE
+from db.tables_definitions import USERS_TABLE, USERS_TESTS_TABLE, RESULTS_TABLE
 from socketserver.go import Go
 
 HOST = os.getenv('HOST', "")
@@ -127,7 +127,7 @@ async def signup(reqHeader, reqBody, server_inst):
             else:
               try:
                 # No rollback needed
-                exp = datetime.utcnow() + timedelta(hours=12)
+                exp = datetime.utcnow() + timedelta(minutes=120)
                 token = jwt.encode(
                   { 'user': { 'ci': ci, 'email': email }, 'exp': exp },
                   SECRET
@@ -179,33 +179,236 @@ async def signin(reqHeader, reqBody, server_inst):
       isinstance(ci, int) and
       isinstance(email, str)
     ):
-      ## CHECK IF USER ALREADY EXISTS IN LOCAL DB
+      ## GET USER FROM LOCAL DB AND REPLICAS
       try:
         userData = await db.queryOne(
           f'SELECT * FROM {USERS_TABLE} WHERE ci=?',
           [ci]
         )
-        if (userData):
-          if(
-            userData['ci'] == ci and
-            userData['email'] == email
+        userReplicas = await asyncio.gather(
+          *[ #this list is spread into the gather method
+            Go(
+              'GET',
+              '/sync_user',
+              host_port = address,
+              body = { 'ci': ci, 'replicas_secret': REPLICAS_SECRET }
+            ).as_coroutine()
+            for address
+            in REPLICAS_ADDRESSES
+          ],
+          return_exceptions = True
+        )
+        # if user is not found (by whatever reason) then is set to None
+        userReplicas = [userReplica[1].get('user') for userReplica in userReplicas]
+        userReplicas.append(userData)
+
+        ## GET IMPORTANT DATA FROM RESULTS:
+        # - most recent user
+        # - list of tokens
+        newestUserData = None
+        maxDataVersion = -1
+        tokens = []
+        for i, user in enumerate(userReplicas):
+          tokens.append('')
+          if isinstance(user, dict):
+            userExists = True
+            tokens.append( user.get('session_token', '') )
+            if (user.get('data_version') > maxDataVersion):
+              maxDataVersion = user.get('data_version')
+              newestUserData = user
+              if i == len(userReplicas) - 1:
+                newestUserData['db-address'] = 'local'
+              else:
+                newestUserData['db-address'] = REPLICAS_ADDRESSES[i]
+        
+        ## CHECK IF USER EXISTS
+        if (newestUserData):
+          newestUserData['session_token'] = ''
+          if( ## CHECK IF USER USER DATA IS CORRECT
+            newestUserData['ci'] == ci and
+            newestUserData['email'] == email
           ):
-            exp = datetime.utcnow() + timedelta(hours=12)
-            token = jwt.encode(
-              { 'user': { 'ci': userData['ci'], 'email': userData['email'] }, 'exp': exp },
-              SECRET
-            )
+            ## CHECK IF REPLICAS HAVE OPEN SESSION
+            isReplicaSessionOpen = False
+            for token in tokens[:-1]:
+              try:
+                jwt.decode(token, SECRET)
+                isReplicaSessionOpen = True
+              except Exception as e:
+                pass
+            
+            if not isReplicaSessionOpen:
+              ## START DATA REPLICATION
+              if newestUserData.get('db-address') == 'local':
+                ## FROM LOCAL DB
+                # Try to UPDATE USER on DB replicas
+                await asyncio.gather(
+                  *[ #this list is spread into the gather method
+                    Go(
+                      'PUT',
+                      '/sync_user',
+                      host_port = address,
+                      body = { 'user': newestUserData, 'replicas_secret': REPLICAS_SECRET }
+                    ).as_coroutine()
+                    for address
+                    in REPLICAS_ADDRESSES
+                  ],
+                  return_exceptions = True
+                )
 
-            userData['session_token'] = token.decode('utf-8')
+                # Try to UPDATE USER_TESTS on DB replicas
+                userTests = await db.queryMany(
+                  f'SELECT * FROM {USERS_TESTS_TABLE} WHERE user_ci=?',
+                  [newestUserData.get('ci')]
+                )
+                await asyncio.gather(
+                  *[ #this list is spread into the gather method
+                    Go(
+                      'PUT',
+                      '/sync_user/tests',
+                      host_port = address,
+                      body = { 'user_tests': userTests, 'user_ci': newestUserData.get('ci'), 'replicas_secret': REPLICAS_SECRET }
+                    ).as_coroutine()
+                    for address
+                    in REPLICAS_ADDRESSES
+                  ],
+                  return_exceptions = True
+                )
 
-            await db.queryOne(
-              f'UPDATE {USERS_TABLE} SET session_token=? WHERE ci=?',
-              [userData['session_token'], ci]
-            )
+                # Try to UPDATE USER_RESULTS on DB replicas
+                userResults = await db.queryMany(
+                  f'SELECT * FROM {RESULTS_TABLE} WHERE user_ci=?',
+                  [newestUserData.get('ci')]
+                )
+                await asyncio.gather(
+                  *[ #this list is spread into the gather method
+                    Go(
+                      'PUT',
+                      '/sync_user/results',
+                      host_port = address,
+                      body = { 'user_results': userResults, 'user_ci': newestUserData.get('ci'), 'replicas_secret': REPLICAS_SECRET }
+                    ).as_coroutine()
+                    for address
+                    in REPLICAS_ADDRESSES
+                  ],
+                  return_exceptions = True
+                )
+              else:
+                ## FROM REPLICA
+                # Try to UPDATE USER on DB replicas
+                await asyncio.gather(
+                  *[ #this list is spread into the gather method
+                    Go(
+                      'PUT',
+                      '/sync_user',
+                      host_port = address,
+                      body = { 'user': newestUserData, 'replicas_secret': REPLICAS_SECRET }
+                    ).as_coroutine()
+                    for address
+                    in REPLICAS_ADDRESSES
+                  ],
+                  return_exceptions = True
+                )
 
-            body = { 'user': userData }
-            header = { **reqHeader, 'code': 200 }
+                # Try to UPDATE USER_TESTS on DB replicas
+                userTests = await Go(
+                  'GET',
+                  '/sync_user/tests',
+                  host_port = newestUserData.get('db-address'),
+                  body= { 'user_ci': newestUserData.get('ci'), 'replicas_secret': REPLICAS_SECRET }
+                ).as_coroutine()
+                await asyncio.gather(
+                  *[ #this list is spread into the gather method
+                    Go(
+                      'PUT',
+                      '/sync_user/tests',
+                      host_port = address,
+                      body = { 'user_tests': userTests, 'user_ci': newestUserData.get('ci'), 'replicas_secret': REPLICAS_SECRET }
+                    ).as_coroutine()
+                    for address
+                    in REPLICAS_ADDRESSES
+                  ],
+                  return_exceptions = True
+                )
 
+                # Try to UPDATE USER_RESULTS on DB replicas
+                userResults = await Go(
+                  'GET',
+                  '/sync_user/results',
+                  host_port = newestUserData.get('db-address'),
+                  body= { 'user_ci': newestUserData.get('ci'), 'replicas_secret': REPLICAS_SECRET }
+                ).as_coroutine()
+                await asyncio.gather(
+                  *[ #this list is spread into the gather method
+                    Go(
+                      'PUT',
+                      '/sync_user/results',
+                      host_port = address,
+                      body = { 'user_results': userResults, 'user_ci': newestUserData.get('ci'), 'replicas_secret': REPLICAS_SECRET }
+                    ).as_coroutine()
+                    for address
+                    in REPLICAS_ADDRESSES
+                  ],
+                  return_exceptions = True
+                )
+                ## after updating replicas, proceed to update local
+                # user data
+                await db.queryOne(f'''
+                  INSERT OR REPLACE
+                  INTO {USERS_TABLE} (ci, email, name, last_name, phone, session_token, data_version)
+                  VALUES (:ci, :email, :name, :last_name, :phone, :session_token, :data_version)
+                  ''',
+                  newestUserData
+                )
+                # user-tests data
+                await asyncio.gather(
+                  *[ #this list is spread into the gather method
+                    db.queryOne(f'''
+                        INSERT OR REPLACE
+                        INTO {USERS_TESTS_TABLE} (user_ci, test_id)
+                        VALUES (:user_ci, :test_id)
+                      ''',
+                      test
+                    )
+                    for test
+                    in userTests
+                  ],
+                  return_exceptions = True
+                )
+                # user-results data
+                await asyncio.gather(
+                  *[ #this list is spread into the gather method
+                    db.queryOne(f'''
+                        INSERT OR REPLACE
+                        INTO {RESULTS_TABLE} (questions, answers, score_per_question, score, user_ci, test_id)
+                        VALUES (:questions, :answers, :score_per_question, :score, :user_ci, :test_id)
+                      ''',
+                      result
+                    )
+                    for result
+                    in userResults
+                  ],
+                  return_exceptions = True
+                )
+              ## END DATA REPLICATION
+              exp = datetime.utcnow() + timedelta(minutes=120)
+              token = jwt.encode(
+                { 'user': { 'ci': newestUserData['ci'], 'email': newestUserData['email'] }, 'exp': exp },
+                SECRET
+              )
+
+              newestUserData['session_token'] = token.decode('utf-8')
+
+              await db.queryOne(
+                f'UPDATE {USERS_TABLE} SET session_token=? WHERE ci=?',
+                [newestUserData['session_token'], ci]
+              )
+
+              body = { 'user': newestUserData }
+              header = { **reqHeader, 'code': 200 }
+            else:
+              body = { 'error_code': 'duplicate-session' }
+              header = { **reqHeader, 'code': 403 }
           else:
             body = { 'error_code': 'invalid-credentials' }
             header = { **reqHeader, 'code': 403 }
