@@ -4,6 +4,7 @@ HOST=""
 PORT="3010"
 DETACH="-it"
 TAG="1"
+INIT_DB="False"
 
 # Get docker ip addrs
 HOST="172.17.0.1"
@@ -29,6 +30,11 @@ then
   TAG=$tag
 fi
 
+if [ "$init_db" != "" ]
+then
+  INIT_DB=$init_db
+fi
+
 echo "Mapped to port: $PORT"
 
 docker run \
@@ -36,4 +42,5 @@ docker run \
   -p $PORT:80 \
   -e HOST=$HOST \
   -e PORT=$PORT \
+  -e INIT_DB=$INIT_DB \
   --mount source=api-volume-$TAG,destination=/app/storage admissions-api
