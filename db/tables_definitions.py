@@ -32,11 +32,11 @@ TESTS_TABLE_DEFINITIONS = f'''
 
 USERS_TESTS_TABLE_DEFINITIONS = f'''
   CREATE TABLE IF NOT EXISTS {USERS_TESTS_TABLE} (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_ci INTEGER NOT NULL,
     test_id INTEGER NOT NULL,
     FOREIGN KEY(user_ci) REFERENCES users(ci),
     FOREIGN KEY(test_id) REFERENCES tests(id)
+    PRIMARY KEY (user_ci, test_id)
   )
 '''
 
@@ -53,17 +53,16 @@ QUESTIONS_TABLE_DEFINITIONS = f'''
 
 QUESTIONS_TESTS_TABLE_DEFINITIONS = f'''
   CREATE TABLE IF NOT EXISTS {QUESTIONS_TESTS_TABLE} (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
     question_id INTEGER NOT NULL,
     test_id INTEGER NOT NULL,
     FOREIGN KEY(question_id) REFERENCES questions(id),
     FOREIGN KEY(test_id) REFERENCES tests(id)
+    PRIMARY KEY (question_id, test_id)
   )
 '''
 
 RESULTS_TABLE_DEFINITIONS = f'''
   CREATE TABLE IF NOT EXISTS {RESULTS_TABLE} (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
     questions TEXT NOT NULL DEFAULT '[]',
     answers TEXT NOT NULL DEFAULT '[]',
     score_per_question TEXT NOT NULL DEFAULT '[]',
@@ -72,6 +71,7 @@ RESULTS_TABLE_DEFINITIONS = f'''
     test_id INTEGER NOT NULL,
     FOREIGN KEY(user_ci) REFERENCES users(ci),
     FOREIGN KEY(test_id) REFERENCES tests(id)
+    PRIMARY KEY (user_ci, test_id)
   )
 '''
 
